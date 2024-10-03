@@ -17,7 +17,6 @@ def load_data():
     return train_data, test_data
 
 if __name__ == '__main__':
-    # This block is optional and can be used for testing the function
     train_data, test_data = load_data()
     print("Training data shape:", train_data.shape)
     print("Test data shape:", test_data.shape)
