@@ -1,4 +1,4 @@
-mport pandas as pd
+import pandas as pd
 import joblib
 from preprocessing import preprocess_data
 from sklearn.ensemble import RandomForestClassifier
