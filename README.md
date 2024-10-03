@@ -54,7 +54,6 @@ Using test_api.py
 
 Using curl
 Single Prediction:
-    ```bash
 
     curl -X POST -H "Content-Type: application/json" \
      -d '{
@@ -78,15 +77,14 @@ Single Prediction:
 
 ### Dependencies
 Install the required packages:
-    ```bash
 
     pip install -r requirements.txt
 
-Key Packages:
-    - pandas
-    - numpy
-    - scikit-learn
-    - Flask
-    - requests
-    - joblib
-    
+    Key Packages:
+      - pandas
+      - numpy
+      - scikit-learn
+      - Flask
+      - requests
+      - joblib
+       
