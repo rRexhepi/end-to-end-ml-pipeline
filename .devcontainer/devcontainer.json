@@ -1,0 +1,13 @@
+{
+    "name": "Kaggle Dev CPU",
+    "image": "gcr.io/kaggle-images/python", // Remember to pull latest before rebuilding.
+    "extensions": [
+        "ms-python.python",
+    ],
+    "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "python.pythonPath": "/opt/conda/bin/python"
+    },
+    "devPort": 8888,
+    "shutdownAction": "none"
+}
