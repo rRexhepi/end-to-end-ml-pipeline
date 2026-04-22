@@ -1,134 +1,87 @@
-from flask import Flask, request, jsonify
+"""FastAPI serving layer for the Titanic model.
+
+Loads a `Preprocessor` + sklearn estimator from disk once at startup.
+Input validation is done by Pydantic; the Preprocessor handles imputation
+with values learned at training time (not inference time).
+"""
+
+from __future__ import annotations
+
+import os
+from contextlib import asynccontextmanager
+from pathlib import Path
+from typing import Literal
+
 import joblib
 import pandas as pd
-from preprocessing import preprocess_data
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
-app = Flask(__name__)
+from preprocessing import Preprocessor
 
-# Load the trained model
-model = joblib.load('models/random_forest_model.pkl')
+MODEL_PATH = Path(os.getenv("MODEL_PATH", "models/random_forest_model.pkl"))
+PREPROCESSOR_PATH = Path(os.getenv("PREPROCESSOR_PATH", "models/preprocessor.pkl"))
 
-# Load encoders and scalers used during preprocessing
-le_embarked = joblib.load('models/le_embarked.pkl')
-scaler = joblib.load('models/scaler.pkl')
 
-def preprocess_input(data):
-    """
-    Preprocess the input data for prediction.
-    """
-    df = pd.DataFrame([data])
+class Passenger(BaseModel):
+    Pclass: Literal[1, 2, 3]
+    Sex: Literal["male", "female"]
+    Age: float | None = Field(default=None, ge=0, le=120)
+    SibSp: int = Field(ge=0, le=20)
+    Parch: int = Field(ge=0, le=20)
+    Fare: float | None = Field(default=None, ge=0)
+    Embarked: Literal["S", "C", "Q"] = "S"
 
-    # Ensure all necessary columns are present
-    required_columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare', 'Embarked']
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    if missing_cols:
-        return jsonify({'error': f'Missing columns: {missing_cols}'}), 400
 
-    # Handle missing values
-    df['Age'] = df['Age'].fillna(df['Age'].median())
-    df['Fare'] = df['Fare'].fillna(df['Fare'].median())
+class PredictionResponse(BaseModel):
+    prediction: int
+    survived: bool
 
-    # Encode categorical variables
-    df['Sex'] = df['Sex'].map({'male': 0, 'female': 1})
-    df['Embarked'] = le_embarked.transform(df['Embarked'])
 
-    # Feature engineering
-    df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
-    df['IsAlone'] = 1  # Initialize to 1 (Alone)
-    df.loc[df['FamilySize'] > 1, 'IsAlone'] = 0  # Not alone
+# Loaded in lifespan so unit tests can swap the artifacts by env var.
+_state: dict = {}
 
-    # Scale numerical features
-    numerical_features = ['Age', 'Fare', 'FamilySize']
-    df[numerical_features] = scaler.transform(df[numerical_features])
 
-    # Select features
-    features = ['Pclass', 'Sex', 'Age', 'Fare', 'Embarked', 'FamilySize', 'IsAlone', 'SibSp', 'Parch']
-    X = df[features]
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    if not MODEL_PATH.exists() or not PREPROCESSOR_PATH.exists():
+        raise RuntimeError(
+            f"Artifacts missing. Train first: `python src/run_pipeline.py`. "
+            f"Looked at {MODEL_PATH} and {PREPROCESSOR_PATH}."
+        )
+    _state["model"] = joblib.load(MODEL_PATH)
+    _state["preprocessor"] = Preprocessor.load(PREPROCESSOR_PATH)
+    yield
+    _state.clear()
 
-    return X
 
-@app.route('/predict', methods=['POST'])
-def predict():
-    """
-    Predict survival for a single passenger.
-    """
-    data = request.get_json(force=True)
+app = FastAPI(title="Titanic Survival API", version="1.0.0", lifespan=lifespan)
 
-    # Preprocess the input data
+
+@app.get("/health")
+def health() -> dict:
+    return {"status": "ok"}
+
+
+@app.post("/predict", response_model=PredictionResponse)
+def predict(passenger: Passenger) -> PredictionResponse:
+    df = pd.DataFrame([passenger.model_dump()])
     try:
-        X = preprocess_input(data)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
+        X = _state["preprocessor"].transform(df)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    pred = int(_state["model"].predict(X)[0])
+    return PredictionResponse(prediction=pred, survived=bool(pred))
 
-    # Make prediction
-    prediction = model.predict(X)
-    output = int(prediction[0])
-    result = 'Survived' if output == 1 else 'Did not survive'
 
-    return jsonify({'prediction': output, 'result': result})
-
-@app.route('/predict_batch', methods=['POST'])
-def predict_batch():
-    """
-    Predict survival for multiple passengers.
-    """
-    data = request.get_json(force=True)
-
-    # Convert data to DataFrame
-    df = pd.DataFrame(data)
-
-    # Preprocess the input data
+@app.post("/predict/batch", response_model=list[PredictionResponse])
+def predict_batch(passengers: list[Passenger]) -> list[PredictionResponse]:
+    if not passengers:
+        raise HTTPException(status_code=400, detail="Empty batch.")
+    df = pd.DataFrame([p.model_dump() for p in passengers])
     try:
-        X = preprocess_input_batch(df)
-    except Exception as e:
-        return jsonify({'error': str(e)}), 400
-
-    # Make predictions
-    predictions = model.predict(X)
-    outputs = predictions.tolist()
-    results = ['Survived' if pred == 1 else 'Did not survive' for pred in outputs]
-
-    return jsonify({'predictions': outputs, 'results': results})
-
-def preprocess_input_batch(df):
-    """
-    Preprocess batch input data for prediction.
-    """
-    # Ensure all necessary columns are present
-    required_columns = ['Pclass', 'Sex', 'Age', 'SibSp', 'Parch', 'Fare', 'Embarked']
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    if missing_cols:
-        raise ValueError(f'Missing columns: {missing_cols}')
-
-    # Handle missing values
-    df['Age'] = df['Age'].fillna(df['Age'].median())
-    df['Fare'] = df['Fare'].fillna(df['Fare'].median())
-
-    # Encode categorical variables
-    df['Sex'] = df['Sex'].map({'male': 0, 'female': 1})
-    df['Embarked'] = le_embarked.transform(df['Embarked'])
-
-    # Feature engineering
-    df['FamilySize'] = df['SibSp'] + df['Parch'] + 1
-    df['IsAlone'] = 1  # Initialize to 1 (Alone)
-    df.loc[df['FamilySize'] > 1, 'IsAlone'] = 0  # Not alone
-
-    # Scale numerical features
-    numerical_features = ['Age', 'Fare', 'FamilySize']
-    df[numerical_features] = scaler.transform(df[numerical_features])
-
-    # Select features
-    features = ['Pclass', 'Sex', 'Age', 'Fare', 'Embarked', 'FamilySize', 'IsAlone', 'SibSp', 'Parch']
-    X = df[features]
-
-    return X
-
-@app.route('/health', methods=['GET'])
-def health():
-    """
-    Health check endpoint.
-    """
-    return jsonify({'status': 'UP'})
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+        X = _state["preprocessor"].transform(df)
+    except (ValueError, KeyError) as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    preds = _state["model"].predict(X).tolist()
+    return [PredictionResponse(prediction=int(p), survived=bool(p)) for p in preds]

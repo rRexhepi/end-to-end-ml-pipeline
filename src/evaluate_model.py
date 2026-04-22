@@ -1,35 +1,42 @@
-import pandas as pd
+"""Evaluate a persisted model on a stratified holdout from train.csv.
+
+The previous version read a `data/validation.csv` that the pipeline never
+produced. This version splits from train.csv with the same seed as training
+so the holdout is reproducible.
+"""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
 import joblib
-from preprocessing import preprocess_data
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+import pandas as pd
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.model_selection import train_test_split
 
-def load_data(file_path):
-    df = pd.read_csv(file_path)
-    return df
+from preprocessing import Preprocessor
 
-def evaluate_model(model, X_val, y_val):
+
+def main(model_path: str, preprocessor_path: str, train_csv: str) -> None:
+    model = joblib.load(model_path)
+    preprocessor = Preprocessor.load(preprocessor_path)
+
+    df = pd.read_csv(train_csv)
+    y = df["Survived"]
+    X = preprocessor.transform(df)
+    _, X_val, _, y_val = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+
     y_pred = model.predict(X_val)
-    print("Evaluation Metrics:")
-    print("-------------------")
-    print(f"Accuracy: {accuracy_score(y_val, y_pred):.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_val, y_pred))
-    print("\nConfusion Matrix:")
-    print(confusion_matrix(y_val, y_pred))
+    print(f"Accuracy: {accuracy_score(y_val, y_pred):.4f}\n")
+    print("Classification Report:\n", classification_report(y_val, y_pred))
+    print("Confusion Matrix:\n", confusion_matrix(y_val, y_pred))
 
-def main():
-    # Load the trained model
-    model = joblib.load('models/random_forest_model.pkl')
 
-    # Load and preprocess the validation data
-    print("Loading and preprocessing validation data...")
-    val_df = load_data('data/validation.csv')  # Ensure you have validation.csv
-    y_val = val_df['Survived']
-    X_val = preprocess_data(val_df, training=False)
-
-    # Evaluate the model
-    print("Evaluating the model...")
-    evaluate_model(model, X_val, y_val)
-
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model", default=str(Path("models") / "random_forest_model.pkl"))
+    parser.add_argument("--preprocessor", default=str(Path("models") / "preprocessor.pkl"))
+    parser.add_argument("--train_csv", default=str(Path("data") / "train.csv"))
+    args = parser.parse_args()
+    main(args.model, args.preprocessor, args.train_csv)

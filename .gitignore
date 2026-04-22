@@ -57,15 +57,17 @@ dmypy.json
 data/
 !data/README.md
 
-# Models (ignore saved models and checkpoints)
-models/
-!models/README.md
+# Models: ignore weights, keep the directory placeholder.
+models/*
+!models/.gitkeep
 
 # Logs and output files
 logs/
 *.log
 *.out
-*.txt
+# Logs/output .txt only — requirements files must be tracked.
+logs/*.txt
+output/*.txt
 
 # TensorBoard log files
 logs/
@@ -75,13 +77,9 @@ events.out.tfevents.*
 mlruns/
 mlflow.log
 
-# Docker files
-*.dockerignore
-docker-compose.yml
+# (Docker and Kubernetes files are tracked intentionally; do not ignore.)
 
-# Kubernetes files
-kubernetes/
-*.yaml
+# (Kubernetes manifests, when added, should be tracked.)
 
 # Environment variables and secrets
 .env

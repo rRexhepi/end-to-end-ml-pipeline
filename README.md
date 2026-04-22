@@ -1,90 +1,129 @@
-# End-to-End Machine Learning Pipeline
+# end-to-end-ml-pipeline
 
-This project demonstrates a complete machine learning workflow using Python, focusing on the Titanic dataset to predict passenger survival.
+A small, honest end-to-end ML service: train a Titanic survival classifier,
+log the run with **MLflow**, ship a **FastAPI** inference service in **Docker**.
+Preprocessing lives in a single stateful `Preprocessor` that is fit on the
+training set and saved alongside the model — so inference on a single row
+uses *training* statistics, not the row's own values.
 
-## Getting Started
+> **Status:** portfolio project. Training + serving work end-to-end; CI runs
+> lint + pytest and builds the Docker image on every push.
 
-### Prerequisites
+## Architecture
 
-- Python 3.7 or higher
-- `pip` package installer
+```mermaid
+flowchart LR
+    subgraph train[Training]
+        CSV["data/train.csv"] --> PP["Preprocessor.fit"]
+        PP --> MODEL["RandomForest<br/>+ GridSearchCV"]
+        MODEL --> MLFLOW["MLflow<br/>run + metrics"]
+        MODEL --> ARTIFACTS["models/<br/>model.pkl<br/>preprocessor.pkl"]
+    end
+    subgraph serve[Serving]
+        ARTIFACTS --> API["FastAPI<br/>/predict, /health"]
+        CLIENT["HTTP POST"] --> API
+    end
+    API --> RESP["{prediction, survived}"]
+```
 
-### Installation
+## Layout
 
-1. **Clone the Repository**
+```
+src/
+  preprocessing.py   # Preprocessor (fit/transform, save/load)
+  data_loader.py     # Reads data/train.csv, data/test.csv
+  train_model.py     # CLI: train with MLflow logging
+  run_pipeline.py    # CLI: train + eval + score test → submission.csv
+  evaluate_model.py  # CLI: evaluate a saved model on a stratified holdout
+  predict_model.py   # CLI: batch-score an arbitrary CSV
+  app.py             # FastAPI serving (Pydantic-validated inputs)
+tests/
+  test_preprocessing.py
+  test_api.py
+Dockerfile, docker-compose.yaml, Makefile, requirements*.txt
+.github/workflows/ci.yml
+```
 
-   ```bash
-   git clone https://github.com/your_username/end-to-end-ml-pipeline.git
-   cd end-to-end-ml-pipeline
+## Quickstart
 
-2. **Install Dependencies**
-    ```bash
-    pip install -r requirements.txt
+```bash
+# 1. Install
+make install-dev
 
-3. **Download the Dataset**
-    - Place train.csv and test.csv in the data/ directory.
-    - Obtain the dataset from the Kaggle Titanic Competition.
+# 2. Put Kaggle Titanic CSVs in data/
+#    (train.csv, test.csv from https://www.kaggle.com/c/titanic)
 
-### Usage
+# 3. Train
+make train
+#   - fits Preprocessor on train.csv
+#   - grid-searches RandomForest, prints validation metrics
+#   - writes models/random_forest_model.pkl + models/preprocessor.pkl
+#   - writes predictions/submission.csv for the Kaggle test set
 
-1. **Run the pipeline**
-Execute the entire machine learning pipeline:
-    ```bash
+# 4. Serve
+make serve
+#   - uvicorn on http://localhost:8000  (FastAPI docs at /docs)
 
-    python src/run_pipeline.py
+# 5. Try it
+curl -X POST http://localhost:8000/predict \
+  -H 'Content-Type: application/json' \
+  -d '{"Pclass":3,"Sex":"male","Age":22,"SibSp":1,"Parch":0,"Fare":7.25,"Embarked":"S"}'
+```
 
-This script will:
-    - Load and preprocess data
-    - Train the model
-    - Save the model and preprocessing objects
-    - Make predictions 
-    - Save predictions and prepare a submission file
+## Docker
 
-2. **Start the API**
-Launch the Flask API to serve predictions:
-    ```bash
+```bash
+make docker-build   # builds titanic-pipeline-api
+make docker-up      # docker compose up -d, mounts ./models read-only
 
-    python src/app.py
+curl http://localhost:8000/health
+```
 
-3. **Test the API**
-Using test_api.py
-    ```bash
+## MLflow
 
-    python src/test_api.py
+`train_model.py` wraps training in an `mlflow.start_run()`; metrics, the
+estimator, and the fitted `Preprocessor` are all logged as artifacts. Browse
+with `mlflow ui` (reads `./mlruns`).
 
-Using curl
-Single Prediction:
+## Tests
 
-    curl -X POST -H "Content-Type: application/json" \
-     -d '{
-           "Pclass": 3,
-           "Sex": "male",
-           "Age": 22,
-           "SibSp": 1,
-           "Parch": 0,
-           "Fare": 7.25,
-           "Embarked": "S"
-         }' \
-     http://localhost:5000/predict
+```bash
+make test
+```
 
-### Project Structure
-    - data/: Datasets
-    - models/: Trained model and preprocessing objects
-    - predictions/: Prediction outputs and submission files
-    - src/: Source code scripts
-    - requirements.txt: Python dependencies
-    - README.md: Project documentation
+The suite covers:
 
-### Dependencies
-Install the required packages:
+- `Preprocessor` state, single-row inference, unseen categories, and
+  save/load round-trip.
+- The FastAPI `/predict`, `/predict/batch`, and `/health` endpoints,
+  including Pydantic validation errors (422) and domain errors (400).
 
-    pip install -r requirements.txt
+CI also builds the Docker image.
 
-    Key Packages:
-      - pandas
-      - numpy
-      - scikit-learn
-      - Flask
-      - requests
-      - joblib
-       
+## Design notes
+
+**Why a stateful `Preprocessor`?** The original version ran
+`df['Age'].fillna(df['Age'].median())` *inside* the inference path — on a
+single-row request that's the row's own value (or NaN). Now `fit()` captures
+`age_median`, `fare_median`, `embarked_mode`, a fitted `LabelEncoder`, and a
+`StandardScaler` on the training set, and `transform()` applies them. The
+whole thing is one joblib artifact so serving can't drift from training.
+
+**Why FastAPI over Flask?** Pydantic gives us typed input validation with
+automatic 422s, and `/docs` is free. Start-up loads artifacts once in a
+`lifespan` hook; nothing is re-read per request.
+
+## Roadmap
+
+What would make this a genuinely production-ready service:
+
+- [ ] Kubernetes manifests (Deployment + Service + HPA) for the API.
+- [ ] Drift monitoring (Evidently or WhyLogs) with a Prometheus metrics endpoint.
+- [ ] MLflow Model Registry with staging → production promotion, served via `mlflow.pyfunc` instead of loading a pickle.
+- [ ] DVC for data + model versioning.
+- [ ] Hydra-based config instead of env vars + defaults.
+- [ ] A PySpark ingestion stage (only if we actually scale past CSV — otherwise don't).
+
+## License
+
+MIT — see [LICENSE](LICENSE).
