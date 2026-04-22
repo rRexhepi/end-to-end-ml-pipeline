@@ -1,4 +1,4 @@
-.PHONY: help install install-dev lint fmt test train serve docker-build docker-up docker-down clean
+.PHONY: help install install-dev lint fmt test train serve docker-build docker-up docker-down dashboards clean
 
 help:
 	@echo "Targets:"
@@ -10,8 +10,9 @@ help:
 	@echo "  train        - Run the full training pipeline (src/run_pipeline.py)"
 	@echo "  serve        - Run the FastAPI app with uvicorn (requires trained artifacts)"
 	@echo "  docker-build - Build the API image"
-	@echo "  docker-up    - docker compose up"
+	@echo "  docker-up    - docker compose up (api + prometheus + grafana)"
 	@echo "  docker-down  - docker compose down"
+	@echo "  dashboards   - Print URLs for API / Grafana / Prometheus"
 
 install:
 	pip install -r requirements.txt
@@ -43,6 +44,11 @@ docker-up:
 
 docker-down:
 	docker compose down
+
+dashboards:
+	@echo "API        : http://localhost:8000  (FastAPI docs at /docs, Prom metrics at /metrics)"
+	@echo "Grafana    : http://localhost:3000  (anonymous viewer enabled — dashboard 'Titanic API — Serving Health & Drift')"
+	@echo "Prometheus : http://localhost:9090"
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

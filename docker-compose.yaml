@@ -7,6 +7,7 @@ services:
     environment:
       MODEL_PATH: /app/models/random_forest_model.pkl
       PREPROCESSOR_PATH: /app/models/preprocessor.pkl
+      REFERENCE_STATS_PATH: /app/models/reference_stats.json
     volumes:
       # Mount locally-trained artifacts into the container. Train with:
       #   python src/run_pipeline.py
@@ -16,3 +17,40 @@ services:
       interval: 30s
       timeout: 5s
       retries: 3
+
+  # ------------------------------------------------------------------
+  # Observability: the API is long-lived, so Prometheus scrapes it
+  # directly — no Pushgateway needed (contrast with the batch ETL,
+  # where Pushgateway is required). Grafana loads a provisioned
+  # dashboard at startup.
+  # ------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.53.1
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    depends_on:
+      - api
+
+  grafana:
+    image: grafana/grafana:11.1.4
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  grafana_data:
