@@ -1,5 +1,6 @@
 import pandas as pd
 
+
 def load_data():
     """
     Load the training and test datasets from CSV files.

@@ -54,7 +54,7 @@ class Preprocessor:
     scaler: StandardScaler = field(default_factory=StandardScaler)
     fitted: bool = False
 
-    def fit(self, df: pd.DataFrame) -> "Preprocessor":
+    def fit(self, df: pd.DataFrame) -> Preprocessor:
         self._require_columns(df)
         self.age_median = float(df["Age"].median())
         self.fare_median = float(df["Fare"].median())
@@ -102,7 +102,7 @@ class Preprocessor:
         joblib.dump(self, path)
 
     @staticmethod
-    def load(path: str | Path) -> "Preprocessor":
+    def load(path: str | Path) -> Preprocessor:
         return joblib.load(path)
 
     @staticmethod

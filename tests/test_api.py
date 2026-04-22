@@ -4,9 +4,6 @@ before starting the FastAPI app. This exercises the real lifespan loader.
 
 from __future__ import annotations
 
-import os
-from pathlib import Path
-
 import joblib
 import pytest
 from fastapi.testclient import TestClient
@@ -31,6 +28,7 @@ def api_client(train_frame, tmp_path, monkeypatch):
 
     # Import after env is set so the module-level constants pick it up.
     import importlib
+
     import app as app_module
     importlib.reload(app_module)
 
