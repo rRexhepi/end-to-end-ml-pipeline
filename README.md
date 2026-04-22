@@ -138,6 +138,33 @@ titanic_feature_drift_psi{feature="Fare"} 0.11
 Scrape with Prometheus, graph with Grafana, alert when any
 `feature_drift_psi` crosses `0.25` (the significant-drift threshold).
 
+### Running the observability stack locally
+
+```bash
+make docker-up    # builds the API, brings up prometheus + grafana
+make dashboards   # prints URLs
+```
+
+Prometheus scrapes the API's `/metrics` directly on a 15s interval
+(no Pushgateway needed — the API is long-lived; contrast with the
+batch ETL pipeline where Pushgateway is the right tool). Grafana
+auto-loads a provisioned dashboard
+([`observability/grafana/dashboards/titanic-api.json`](observability/grafana/dashboards/titanic-api.json))
+with:
+
+* **Requests/minute** and **positive rate** at a glance.
+* **p50 / p95 / p99 latency** computed from `histogram_quantile` over
+  the prediction-latency histogram — the three numbers you actually
+  put in a serving SLO.
+* **Max feature drift PSI** with green / yellow / red thresholds at
+  0.0 / 0.1 / 0.25, plus a per-feature time series for drill-down.
+* A table view of the loaded model's `model_info` (registry URI or
+  filesystem path + the loaded version) so on-call can tell at a
+  glance which model is actually in production right now.
+
+Screenshot goes here once the stack has been run against real
+traffic: `docs/grafana-dashboard.png` (not yet committed).
+
 ## Tests
 
 ```bash
@@ -200,8 +227,11 @@ once in a `lifespan` hook; nothing is re-read per request.
 
 - [x] MLflow Model Registry with alias-based promotion, served via `mlflow.pyfunc`.
 - [x] Drift monitoring (PSI) with a Prometheus `/metrics` endpoint.
-- [ ] Grafana dashboard JSON checked into `grafana/` with a screenshot here.
-- [ ] Kubernetes manifests (Deployment + Service + HPA) — *only* if actually deployed to a cluster; otherwise it's ceremony.
+- [x] Grafana dashboard JSON checked into `observability/grafana/dashboards/`, auto-provisioned by compose.
+- [ ] Commit a Grafana screenshot after a real load-gen run.
+- [ ] Alert rules (`prometheus.rules.yml`) for latency SLO + drift threshold.
+- [ ] Shadow scoring: serve `@production` in the hot path, send a copy to `@candidate`, log disagreement rate.
+- [ ] Kubernetes manifests — *only* if actually deployed to a cluster; otherwise it's ceremony.
 - [ ] DVC for data + model versioning.
 - [ ] Hydra-based config instead of env vars + defaults.
 - [ ] A PySpark ingestion stage (only if we actually scale past CSV — otherwise don't).
