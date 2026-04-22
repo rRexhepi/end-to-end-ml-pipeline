@@ -16,14 +16,18 @@ flowchart LR
     subgraph train[Training]
         CSV["data/train.csv"] --> PP["Preprocessor.fit"]
         PP --> MODEL["RandomForest<br/>+ GridSearchCV"]
-        MODEL --> MLFLOW["MLflow<br/>run + metrics"]
-        MODEL --> ARTIFACTS["models/<br/>model.pkl<br/>preprocessor.pkl"]
+        MODEL --> PYFUNC["TitanicSurvivalModel<br/>(pyfunc wrapper)"]
+        PYFUNC --> REGISTRY[("MLflow Model Registry<br/>titanic-survival<br/>@candidate / @production")]
+        MODEL --> REF["reference_stats.json<br/>(drift baseline)"]
     end
     subgraph serve[Serving]
-        ARTIFACTS --> API["FastAPI<br/>/predict, /health"]
+        REGISTRY -- "models:/…@production" --> API["FastAPI<br/>/predict · /health · /metrics"]
+        REF --> MON["DriftMonitor<br/>(PSI vs. reference)"]
+        MON -. exposes .-> API
         CLIENT["HTTP POST"] --> API
     end
     API --> RESP["{prediction, survived}"]
+    API -- "prom scrape" --> GRAF["Prometheus / Grafana"]
 ```
 
 ## Layout
@@ -32,14 +36,18 @@ flowchart LR
 src/
   preprocessing.py   # Preprocessor (fit/transform, save/load)
   data_loader.py     # Reads data/train.csv, data/test.csv
-  train_model.py     # CLI: train with MLflow logging
+  mlflow_model.py    # Preprocessor + estimator as one MLflow pyfunc
+  monitoring.py      # DriftMonitor, ReferenceStats, Prometheus metrics
+  train_model.py     # CLI: train, log pyfunc, register, set alias
   run_pipeline.py    # CLI: train + eval + score test → submission.csv
   evaluate_model.py  # CLI: evaluate a saved model on a stratified holdout
   predict_model.py   # CLI: batch-score an arbitrary CSV
-  app.py             # FastAPI serving (Pydantic-validated inputs)
+  app.py             # FastAPI serving (Registry URI or filesystem fallback)
 tests/
   test_preprocessing.py
   test_api.py
+  test_mlflow_model.py
+  test_monitoring.py
 Dockerfile, docker-compose.yaml, Makefile, requirements*.txt
 .github/workflows/ci.yml
 ```
@@ -79,11 +87,56 @@ make docker-up      # docker compose up -d, mounts ./models read-only
 curl http://localhost:8000/health
 ```
 
-## MLflow
+## MLflow Model Registry
 
-`train_model.py` wraps training in an `mlflow.start_run()`; metrics, the
-estimator, and the fitted `Preprocessor` are all logged as artifacts. Browse
-with `mlflow ui` (reads `./mlruns`).
+`train_model.py` wraps training in `mlflow.start_run()`, logs a single
+**pyfunc** artifact (Preprocessor + estimator wrapped as
+`TitanicSurvivalModel`), and registers it under the name
+`titanic-survival`. Every new version gets the `@candidate` alias; passing
+`--promote` also moves the `@production` alias.
+
+```bash
+python src/train_model.py --model random_forest            # register as @candidate
+python src/train_model.py --model random_forest --promote  # also promote to @production
+mlflow ui  # browse runs + registry at http://localhost:5000
+```
+
+Serving reads whichever path is set:
+
+```bash
+# Registry path (production).
+MODEL_URI=models:/titanic-survival@production make serve
+
+# Filesystem path (local dev / CI / Dockerfile default).
+make serve   # falls back to models/<model>_model.pkl + models/preprocessor.pkl
+```
+
+## Metrics & drift
+
+`GET /metrics` returns Prometheus text with per-class prediction
+counters, a prediction-latency histogram, and PSI-based feature drift
+gauges computed from a rolling buffer of recent inputs against the
+training distribution captured in `models/reference_stats.json`.
+
+```
+# HELP titanic_predictions_total Predictions served, labelled by output class.
+# TYPE titanic_predictions_total counter
+titanic_predictions_total{label="0"} 42.0
+titanic_predictions_total{label="1"} 18.0
+
+# HELP titanic_prediction_latency_seconds End-to-end latency of a /predict call (seconds).
+# TYPE titanic_prediction_latency_seconds histogram
+titanic_prediction_latency_seconds_bucket{le="0.01"} 57.0
+titanic_prediction_latency_seconds_bucket{le="+Inf"} 60.0
+
+# HELP titanic_feature_drift_psi PSI of recent inputs vs. the training distribution.
+# TYPE titanic_feature_drift_psi gauge
+titanic_feature_drift_psi{feature="Age"}  0.03
+titanic_feature_drift_psi{feature="Fare"} 0.11
+```
+
+Scrape with Prometheus, graph with Grafana, alert when any
+`feature_drift_psi` crosses `0.25` (the significant-drift threshold).
 
 ## Tests
 
@@ -95,8 +148,13 @@ The suite covers:
 
 - `Preprocessor` state, single-row inference, unseen categories, and
   save/load round-trip.
-- The FastAPI `/predict`, `/predict/batch`, and `/health` endpoints,
-  including Pydantic validation errors (422) and domain errors (400).
+- The FastAPI `/predict`, `/predict/batch`, `/health`, and `/metrics`
+  endpoints, including Pydantic validation errors (422) and domain
+  errors (400).
+- The MLflow pyfunc round-trip: log, load via URI, assert predictions
+  match the unwrapped estimator on raw input.
+- `ReferenceStats.fit/save/load`, PSI on matched vs. shifted
+  distributions, and the `DriftMonitor`'s Prometheus output.
 
 CI also builds the Docker image.
 
@@ -109,17 +167,41 @@ single-row request that's the row's own value (or NaN). Now `fit()` captures
 `StandardScaler` on the training set, and `transform()` applies them. The
 whole thing is one joblib artifact so serving can't drift from training.
 
-**Why FastAPI over Flask?** Pydantic gives us typed input validation with
-automatic 422s, and `/docs` is free. Start-up loads artifacts once in a
-`lifespan` hook; nothing is re-read per request.
+**Why a pyfunc + Model Registry, not two pickles on disk?** Loading a
+`Preprocessor.pkl` and a `model.pkl` separately is two chances to get
+the versioning wrong. When they drift, predictions get silently wrong,
+not loudly broken. Wrapping both inside a single
+`mlflow.pyfunc.PythonModel` and registering it under
+`models:/titanic-survival@production` makes the serving unit atomic —
+one URI, one version, one rollback button. The filesystem path still
+exists as a fallback so CI and the Dockerfile-baked image keep working.
+
+**Why aliases instead of Stages?** MLflow 2.9+ deprecated the
+`Staging`/`Production` stage strings in favour of arbitrary aliases.
+Aliases are cheaper to reason about (no hidden state machine), they
+let you run e.g. `@candidate` + `@production` in parallel for
+shadow-scoring, and they're what `models:/name@alias` URIs actually
+resolve against.
+
+**Why PSI rather than Evidently / WhyLogs?** Evidently is the right
+choice when you want an HTML report with a dozen stats tests. For a
+live `/metrics` endpoint powering a Grafana graph, the thing you
+actually plot is a single scalar per feature — and PSI is the standard
+for that. Rolling our own ~20 lines of `compute_psi` keeps the
+dependency surface small and documents what "drift" means. On the
+static Kaggle dataset, the numbers are ~0 by construction — the value
+is the wiring: point this at a live stream and it earns its keep.
+
+**Why FastAPI over Flask?** Pydantic gives us typed input validation
+with automatic 422s, and `/docs` is free. Start-up loads artifacts
+once in a `lifespan` hook; nothing is re-read per request.
 
 ## Roadmap
 
-What would make this a genuinely production-ready service:
-
-- [ ] Kubernetes manifests (Deployment + Service + HPA) for the API.
-- [ ] Drift monitoring (Evidently or WhyLogs) with a Prometheus metrics endpoint.
-- [ ] MLflow Model Registry with staging → production promotion, served via `mlflow.pyfunc` instead of loading a pickle.
+- [x] MLflow Model Registry with alias-based promotion, served via `mlflow.pyfunc`.
+- [x] Drift monitoring (PSI) with a Prometheus `/metrics` endpoint.
+- [ ] Grafana dashboard JSON checked into `grafana/` with a screenshot here.
+- [ ] Kubernetes manifests (Deployment + Service + HPA) — *only* if actually deployed to a cluster; otherwise it's ceremony.
 - [ ] DVC for data + model versioning.
 - [ ] Hydra-based config instead of env vars + defaults.
 - [ ] A PySpark ingestion stage (only if we actually scale past CSV — otherwise don't).
