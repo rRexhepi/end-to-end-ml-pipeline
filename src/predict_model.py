@@ -1,33 +1,34 @@
-import pandas as pd
+"""Batch scoring CLI: takes an input CSV, writes predictions CSV."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
 import joblib
-from preprocessing import preprocess_data
+import pandas as pd
 
-def make_predictions(input_data_path, output_path):
-    # Load the trained model
-    model = joblib.load('models/random_forest_model.pkl')
+from preprocessing import Preprocessor
 
-    # Load new data
-    data = pd.read_csv(input_data_path)
 
-    # Preprocess the data
-    X = preprocess_data(data)
+def make_predictions(input_csv: str, output_csv: str, model_path: str, preprocessor_path: str) -> None:
+    model = joblib.load(model_path)
+    preprocessor = Preprocessor.load(preprocessor_path)
 
-    # Make predictions
-    predictions = model.predict(X)
+    data = pd.read_csv(input_csv)
+    X = preprocessor.transform(data)
+    data["Predictions"] = model.predict(X)
 
-    # Add predictions to the DataFrame
-    data['Predictions'] = predictions
+    Path(output_csv).parent.mkdir(parents=True, exist_ok=True)
+    data.to_csv(output_csv, index=False)
+    print(f"Wrote {len(data)} predictions to {output_csv}")
 
-    # Save the predictions
-    data.to_csv(output_path, index=False)
-    print(f"Predictions saved to {output_path}")
 
-if __name__ == '__main__':
-    import argparse
-
-    parser = argparse.ArgumentParser(description='Make predictions with the trained model.')
-    parser.add_argument('--input_data', type=str, required=True, help='Path to the input data CSV file.')
-    parser.add_argument('--output_data', type=str, required=True, help='Path to save the output CSV file with predictions.')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Score a CSV with the trained Titanic model.")
+    parser.add_argument("--input_data", required=True)
+    parser.add_argument("--output_data", required=True)
+    parser.add_argument("--model", default="models/random_forest_model.pkl")
+    parser.add_argument("--preprocessor", default="models/preprocessor.pkl")
     args = parser.parse_args()
-
-    make_predictions(args.input_data, args.output_data)
+    make_predictions(args.input_data, args.output_data, args.model, args.preprocessor)

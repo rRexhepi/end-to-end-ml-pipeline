@@ -1,113 +1,74 @@
-import pandas as pd
+"""Run the full training + inference pipeline.
+
+Fits a `Preprocessor` and RandomForest on train.csv, evaluates on a stratified
+20% holdout, and scores test.csv into predictions/submission.csv.
+"""
+
+from __future__ import annotations
+
+from pathlib import Path
+
 import joblib
-from preprocessing import preprocess_data
+import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import GridSearchCV, train_test_split
-from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-import os
 
-def load_data(file_path):
-    df = pd.read_csv(file_path)
-    return df
+from preprocessing import Preprocessor
 
-def train_model(X_train, y_train):
-    # Define the model
-    model = RandomForestClassifier(random_state=42)
+MODELS_DIR = Path("models")
+PREDICTIONS_DIR = Path("predictions")
 
-    # Define hyperparameters for tuning
-    param_grid = {
-        'n_estimators': [100, 200],
-        'max_depth': [None, 5, 10],
-        'min_samples_split': [2, 5],
-    }
+RF_PARAM_GRID = {
+    "n_estimators": [100, 200],
+    "max_depth": [None, 5, 10],
+    "min_samples_split": [2, 5],
+}
 
-    # Set up GridSearchCV
-    grid_search = GridSearchCV(
-        estimator=model,
-        param_grid=param_grid,
-        cv=5,
-        n_jobs=-1,
-        verbose=1,
-    )
 
-    # Fit the model
-    grid_search.fit(X_train, y_train)
+def main() -> None:
+    MODELS_DIR.mkdir(exist_ok=True)
+    PREDICTIONS_DIR.mkdir(exist_ok=True)
 
-    # Return the best estimator
-    return grid_search.best_estimator_
+    train_df = pd.read_csv("data/train.csv")
+    y = train_df["Survived"]
 
-def evaluate_model(model, X_val, y_val):
-    # Make predictions on the validation set
-    y_pred = model.predict(X_val)
+    preprocessor = Preprocessor().fit(train_df)
+    X = preprocessor.transform(train_df)
 
-    # Calculate evaluation metrics
-    print("Evaluation Metrics:")
-    print("-------------------")
-    print(f"Accuracy: {accuracy_score(y_val, y_pred):.4f}")
-    print("\nClassification Report:")
-    print(classification_report(y_val, y_pred))
-    print("\nConfusion Matrix:")
-    print(confusion_matrix(y_val, y_pred))
-
-def save_model(model, model_path):
-    joblib.dump(model, model_path)
-    print(f"Model saved to {model_path}")
-
-def prepare_submission(predictions_df, output_file):
-    submission = pd.DataFrame({
-        'PassengerId': predictions_df['PassengerId'],
-        'Survived': predictions_df['Predictions']
-    })
-    submission.to_csv(output_file, index=False)
-    print(f"Submission file saved to {output_file}")
-
-def main():
-    # Create directories if they don't exist
-    os.makedirs('models', exist_ok=True)
-    os.makedirs('predictions', exist_ok=True)
-
-    # Load and preprocess the training data
-    print("Loading and preprocessing training data...")
-    train_df = load_data('data/train.csv')
-    y = train_df['Survived']
-    X = preprocess_data(train_df, training=True)
-
-    # Split the data into training and validation sets
-    print("Splitting data into training and validation sets...")
     X_train, X_val, y_train, y_val = train_test_split(
         X, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # Train the model
-    print("Training the model...")
-    model = train_model(X_train, y_train)
+    print("Tuning RandomForest...")
+    grid = GridSearchCV(
+        RandomForestClassifier(random_state=42),
+        RF_PARAM_GRID,
+        cv=5,
+        n_jobs=-1,
+        verbose=1,
+    )
+    grid.fit(X_train, y_train)
+    model = grid.best_estimator_
 
-    # Evaluate the model
-    print("Evaluating the model...")
-    evaluate_model(model, X_val, y_val)
+    y_pred = model.predict(X_val)
+    print(f"\nValidation Accuracy: {accuracy_score(y_val, y_pred):.4f}")
+    print("\nClassification Report:\n", classification_report(y_val, y_pred))
+    print("Confusion Matrix:\n", confusion_matrix(y_val, y_pred))
 
-    # Save the trained model
-    print("Saving the model...")
-    save_model(model, 'models/random_forest_model.pkl')
+    preprocessor.save(MODELS_DIR / "preprocessor.pkl")
+    joblib.dump(model, MODELS_DIR / "random_forest_model.pkl")
 
-    # Load and preprocess the test data
-    print("Loading and preprocessing test data...")
-    test_df = load_data('data/test.csv')
-    X_test = preprocess_data(test_df, training=False)
-
-    # Make predictions on the test data
-    print("Making predictions on the test data...")
+    test_df = pd.read_csv("data/test.csv")
+    X_test = preprocessor.transform(test_df)
     predictions = model.predict(X_test)
 
-    # Save the predictions
-    print("Saving predictions...")
-    test_df['Predictions'] = predictions
-    test_df.to_csv('predictions/predictions.csv', index=False)
-    print("Predictions saved to predictions/predictions.csv")
+    submission = pd.DataFrame(
+        {"PassengerId": test_df["PassengerId"], "Survived": predictions}
+    )
+    submission.to_csv(PREDICTIONS_DIR / "submission.csv", index=False)
+    print(f"\nWrote {len(submission)} predictions to {PREDICTIONS_DIR / 'submission.csv'}")
 
-    # Prepare the submission file
-    print("Preparing submission file...")
-    prepare_submission(test_df, 'predictions/submission.csv')
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

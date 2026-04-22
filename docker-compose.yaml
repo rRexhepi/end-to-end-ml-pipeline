@@ -1,0 +1,18 @@
+services:
+  api:
+    build: .
+    image: titanic-pipeline-api
+    ports:
+      - "8000:8000"
+    environment:
+      MODEL_PATH: /app/models/random_forest_model.pkl
+      PREPROCESSOR_PATH: /app/models/preprocessor.pkl
+    volumes:
+      # Mount locally-trained artifacts into the container. Train with:
+      #   python src/run_pipeline.py
+      - ./models:/app/models:ro
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
