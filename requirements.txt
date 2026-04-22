@@ -9,5 +9,8 @@ fastapi==0.115.2
 uvicorn[standard]==0.32.0
 pydantic==2.9.2
 
+# Observability: /metrics endpoint with PSI-based drift gauges.
+prometheus-client==0.21.0
+
 # Client used by src/smoke_api.py
 requests==2.32.3
