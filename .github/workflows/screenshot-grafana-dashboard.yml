@@ -1,0 +1,155 @@
+name: Capture Grafana dashboard screenshot
+
+# Manual-only. Spins up the full observability stack on an Ubuntu runner,
+# trains a model, drives synthetic traffic against the API, captures the
+# Grafana dashboard with Playwright, and opens a follow-up PR with the
+# refreshed PNG (and the README change to embed it).
+#
+# Why a workflow instead of a one-off local capture? The compose stack is
+# already the reproducibility contract for the repo, so screenshots taken
+# in CI are guaranteed to match what a reviewer would see locally. Local
+# capture also requires a working Docker host and tipped over hard on the
+# author's machine — disposable runners sidestep that entirely.
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  screenshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install pipeline dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Generate synthetic Titanic data
+        run: python scripts/generate_synthetic_titanic.py
+
+      - name: Train baseline model + reference stats
+        env:
+          PYTHONPATH: src
+          TITANIC_N_JOBS: "2"
+        run: |
+          python src/run_pipeline.py
+          # run_pipeline.py writes preprocessor.pkl + random_forest_model.pkl but
+          # not reference_stats.json (that path lives in train_model.py, which
+          # also wants an MLflow registry backend — overkill for the screenshot
+          # workflow). Generate the drift-monitor reference snapshot inline
+          # so the dashboard's PSI panels render.
+          python - <<'PY'
+          import pandas as pd
+          from monitoring import ReferenceStats
+
+          df = pd.read_csv("data/train.csv")
+          ReferenceStats.fit(df).save("models/reference_stats.json")
+          print("Wrote models/reference_stats.json")
+          PY
+
+      - name: Bring up observability stack
+        run: docker compose up -d --build
+
+      - name: Wait for API + Grafana to be healthy
+        run: |
+          for i in $(seq 1 60); do
+            api_ok=$(curl -sSf http://localhost:8000/health >/dev/null && echo y || echo n)
+            graf_ok=$(curl -sSf http://localhost:3000/api/health >/dev/null && echo y || echo n)
+            if [ "$api_ok" = "y" ] && [ "$graf_ok" = "y" ]; then
+              echo "API + Grafana healthy after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Stack failed to come up"
+          docker compose ps
+          docker compose logs --tail=200
+          exit 1
+
+      - name: Wait for dashboard provisioning
+        run: |
+          for i in $(seq 1 30); do
+            if curl -sSf http://localhost:3000/api/dashboards/uid/titanic-api >/dev/null; then
+              echo "Dashboard provisioned after ${i} attempts"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::Dashboard not provisioned"
+          docker compose logs grafana | tail -100
+          exit 1
+
+      - name: Drive synthetic /predict traffic for ~90s
+        env:
+          PYTHONPATH: src
+        run: |
+          end=$(( $(date +%s) + 90 ))
+          calls=0
+          while [ $(date +%s) -lt $end ]; do
+            python src/smoke_api.py >/dev/null 2>&1 || true
+            calls=$(( calls + 1 ))
+          done
+          echo "Issued ${calls} predict calls"
+
+      - name: Let Prometheus scrape settle
+        # Dashboard panels use rate(...[1m]) / rate(...[5m]); give Prometheus
+        # at least two scrape intervals (15s each) past the last request before
+        # snapshotting so the rate windows aren't zeroed.
+        run: sleep 30
+
+      - name: Install Playwright + Chromium
+        run: |
+          pip install "playwright==1.47.2"
+          playwright install --with-deps chromium
+
+      - name: Capture dashboard screenshot
+        run: |
+          mkdir -p docs
+          python .github/scripts/screenshot_dashboard.py \
+            --url "http://localhost:3000/d/titanic-api/titanic-api-serving-health-drift?kiosk&from=now-5m&to=now" \
+            --out docs/grafana-dashboard.png
+
+      - name: Upload screenshot as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: grafana-dashboard
+          path: docs/grafana-dashboard.png
+
+      - name: Tear down stack
+        if: always()
+        run: docker compose down -v
+
+      - name: Open PR with refreshed screenshot
+        uses: peter-evans/create-pull-request@v6
+        with:
+          branch: chore/grafana-dashboard-screenshot
+          delete-branch: true
+          title: "chore: refresh Grafana dashboard screenshot"
+          commit-message: "chore: refresh Grafana dashboard screenshot"
+          body: |
+            Auto-generated by [`Capture Grafana dashboard screenshot`](.github/workflows/screenshot-grafana-dashboard.yml).
+
+            Refreshed `docs/grafana-dashboard.png` from a clean observability-stack run on `ubuntu-latest`:
+            synthetic Titanic data → trained baseline → docker-compose up → 90 s of `/predict` traffic →
+            Playwright snapshot of the `Titanic API — Serving Health & Drift` dashboard.
+
+            ### Follow-up
+            Once merged, replace the placeholder paragraph in `README.md`'s Observability section with:
+
+            ```markdown
+            ![Grafana dashboard](docs/grafana-dashboard.png)
+            ```
+          add-paths: |
+            docs/grafana-dashboard.png
