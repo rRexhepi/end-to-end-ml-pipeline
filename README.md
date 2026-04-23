@@ -69,6 +69,9 @@ make train
 #   - grid-searches RandomForest, prints validation metrics
 #   - writes models/random_forest_model.pkl + models/preprocessor.pkl
 #   - writes predictions/submission.csv for the Kaggle test set
+#
+#   GridSearchCV fans out across TITANIC_N_JOBS workers (default 2).
+#   Crank it up if you have the cores: TITANIC_N_JOBS=8 make train.
 
 # 4. Serve
 make serve
