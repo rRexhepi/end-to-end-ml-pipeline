@@ -178,12 +178,14 @@ masks the other two. Alertmanager isn't shipped yet — the rules
 expose their state on Prometheus' `/alerts` page and via Grafana's
 unified-alerting view.
 
-**Screenshot — pending.** A `docs/grafana-dashboard.png` will land
-via a GitHub Actions workflow that spins up the compose stack on an
-Ubuntu runner, drives synthetic traffic, snapshots the dashboard with
-Playwright, and commits it back. Running that capture locally depends
-on having a container runtime; keeping it in CI makes it reproducible
-and contributor-friendly.
+![Titanic API — Serving Health & Drift dashboard](docs/grafana-dashboard.png)
+
+The image above is captured in CI, not hand-cropped on a laptop: the
+[`Capture Grafana dashboard screenshot`](.github/workflows/screenshot-grafana-dashboard.yml)
+workflow spins up the compose stack on an Ubuntu runner, drives
+synthetic `/predict` traffic, snapshots the dashboard with Playwright,
+and opens a follow-up PR with the refreshed PNG. Trigger it manually
+from the Actions tab whenever the panels change.
 
 ## Tests
 
@@ -248,7 +250,7 @@ once in a `lifespan` hook; nothing is re-read per request.
 - [x] MLflow Model Registry with alias-based promotion, served via `mlflow.pyfunc`.
 - [x] Drift monitoring (PSI) with a Prometheus `/metrics` endpoint.
 - [x] Grafana dashboard JSON checked into `observability/grafana/dashboards/`, auto-provisioned by compose.
-- [ ] GitHub Actions workflow: compose up → drive synthetic traffic → Playwright screenshot of the dashboard → commit `docs/grafana-dashboard.png`.
+- [x] GitHub Actions workflow: compose up → drive synthetic traffic → Playwright screenshot of the dashboard → commit `docs/grafana-dashboard.png`.
 - [x] Alert rules (`observability/prometheus/alerts.yml`) for latency SLO + drift threshold.
 - [ ] Shadow scoring: serve `@production` in the hot path, send a copy to `@candidate`, log disagreement rate.
 - [ ] Kubernetes manifests — *only* if actually deployed to a cluster; otherwise it's ceremony.
