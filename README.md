@@ -167,6 +167,17 @@ with:
   filesystem path + the loaded version) so on-call can tell at a
   glance which model is actually in production right now.
 
+**Alert rules.** Prometheus evaluates a small rules file at
+[`observability/prometheus/alerts.yml`](observability/prometheus/alerts.yml).
+`TitanicAPIHighLatency` fires when the histogram-derived p95 of
+`/predict` exceeds 250 ms for 10 minutes,
+`TitanicFeatureDriftHigh` fires when any monitored feature's PSI
+sits above the 0.25 significant-drift threshold for 30 minutes,
+and `TitanicAPIDown` catches a missing scrape target before silence
+masks the other two. Alertmanager isn't shipped yet — the rules
+expose their state on Prometheus' `/alerts` page and via Grafana's
+unified-alerting view.
+
 **Screenshot — pending.** A `docs/grafana-dashboard.png` will land
 via a GitHub Actions workflow that spins up the compose stack on an
 Ubuntu runner, drives synthetic traffic, snapshots the dashboard with
@@ -238,7 +249,7 @@ once in a `lifespan` hook; nothing is re-read per request.
 - [x] Drift monitoring (PSI) with a Prometheus `/metrics` endpoint.
 - [x] Grafana dashboard JSON checked into `observability/grafana/dashboards/`, auto-provisioned by compose.
 - [ ] GitHub Actions workflow: compose up → drive synthetic traffic → Playwright screenshot of the dashboard → commit `docs/grafana-dashboard.png`.
-- [ ] Alert rules (`prometheus.rules.yml`) for latency SLO + drift threshold.
+- [x] Alert rules (`observability/prometheus/alerts.yml`) for latency SLO + drift threshold.
 - [ ] Shadow scoring: serve `@production` in the hot path, send a copy to `@candidate`, log disagreement rate.
 - [ ] Kubernetes manifests — *only* if actually deployed to a cluster; otherwise it's ceremony.
 - [ ] DVC for data + model versioning.
