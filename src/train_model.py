@@ -27,16 +27,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
 from sklearn.model_selection import GridSearchCV, train_test_split
 
+from data_loader import load_data
+from mlflow_model import log_and_register
+from monitoring import ReferenceStats
+from preprocessing import Preprocessor
+
 # Cap joblib fan-out by default. ``n_jobs=-1`` spawns one worker per core,
 # and each worker inherits the parent's resident dataset + imports; on a
 # modern laptop with a dozen cores that can churn enough memory to tip an
 # already-stressed kernel into OOM territory. Override via TITANIC_N_JOBS.
 N_JOBS = int(os.getenv("TITANIC_N_JOBS", "2"))
-
-from data_loader import load_data
-from mlflow_model import log_and_register
-from monitoring import ReferenceStats
-from preprocessing import Preprocessor
 
 MODELS_DIR = Path("models")
 PREPROCESSOR_PATH = MODELS_DIR / "preprocessor.pkl"
