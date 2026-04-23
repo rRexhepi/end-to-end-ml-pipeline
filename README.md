@@ -60,6 +60,8 @@ make install-dev
 
 # 2. Put Kaggle Titanic CSVs in data/
 #    (train.csv, test.csv from https://www.kaggle.com/c/titanic)
+#    Don't have Kaggle? Generate stand-in data with the same schema:
+python scripts/generate_synthetic_titanic.py
 
 # 3. Train
 make train
@@ -162,8 +164,12 @@ with:
   filesystem path + the loaded version) so on-call can tell at a
   glance which model is actually in production right now.
 
-Screenshot goes here once the stack has been run against real
-traffic: `docs/grafana-dashboard.png` (not yet committed).
+**Screenshot — pending.** A `docs/grafana-dashboard.png` will land
+via a GitHub Actions workflow that spins up the compose stack on an
+Ubuntu runner, drives synthetic traffic, snapshots the dashboard with
+Playwright, and commits it back. Running that capture locally depends
+on having a container runtime; keeping it in CI makes it reproducible
+and contributor-friendly.
 
 ## Tests
 
@@ -228,7 +234,7 @@ once in a `lifespan` hook; nothing is re-read per request.
 - [x] MLflow Model Registry with alias-based promotion, served via `mlflow.pyfunc`.
 - [x] Drift monitoring (PSI) with a Prometheus `/metrics` endpoint.
 - [x] Grafana dashboard JSON checked into `observability/grafana/dashboards/`, auto-provisioned by compose.
-- [ ] Commit a Grafana screenshot after a real load-gen run.
+- [ ] GitHub Actions workflow: compose up → drive synthetic traffic → Playwright screenshot of the dashboard → commit `docs/grafana-dashboard.png`.
 - [ ] Alert rules (`prometheus.rules.yml`) for latency SLO + drift threshold.
 - [ ] Shadow scoring: serve `@production` in the hot path, send a copy to `@candidate`, log disagreement rate.
 - [ ] Kubernetes manifests — *only* if actually deployed to a cluster; otherwise it's ceremony.
