@@ -6,6 +6,7 @@ Fits a `Preprocessor` and RandomForest on train.csv, evaluates on a stratified
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import joblib
@@ -18,6 +19,9 @@ from preprocessing import Preprocessor
 
 MODELS_DIR = Path("models")
 PREDICTIONS_DIR = Path("predictions")
+
+# See train_model.py for why we don't default to n_jobs=-1.
+N_JOBS = int(os.getenv("TITANIC_N_JOBS", "2"))
 
 RF_PARAM_GRID = {
     "n_estimators": [100, 200],
@@ -45,7 +49,7 @@ def main() -> None:
         RandomForestClassifier(random_state=42),
         RF_PARAM_GRID,
         cv=5,
-        n_jobs=-1,
+        n_jobs=N_JOBS,
         verbose=1,
     )
     grid.fit(X_train, y_train)

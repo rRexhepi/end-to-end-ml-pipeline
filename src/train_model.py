@@ -15,6 +15,7 @@ Produces three things on every run:
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 import joblib
@@ -30,6 +31,12 @@ from data_loader import load_data
 from mlflow_model import log_and_register
 from monitoring import ReferenceStats
 from preprocessing import Preprocessor
+
+# Cap joblib fan-out by default. ``n_jobs=-1`` spawns one worker per core,
+# and each worker inherits the parent's resident dataset + imports; on a
+# modern laptop with a dozen cores that can churn enough memory to tip an
+# already-stressed kernel into OOM territory. Override via TITANIC_N_JOBS.
+N_JOBS = int(os.getenv("TITANIC_N_JOBS", "2"))
 
 MODELS_DIR = Path("models")
 PREPROCESSOR_PATH = MODELS_DIR / "preprocessor.pkl"
@@ -76,7 +83,7 @@ def train_model(model_name: str = "logistic_regression", *, promote: bool = Fals
         model = build_model(model_name)
 
         if model_name == "random_forest":
-            grid = GridSearchCV(model, RF_PARAM_GRID, cv=5, scoring="accuracy", n_jobs=-1)
+            grid = GridSearchCV(model, RF_PARAM_GRID, cv=5, scoring="accuracy", n_jobs=N_JOBS)
             grid.fit(X_train, y_train)
             model = grid.best_estimator_
             mlflow.log_params(grid.best_params_)
