@@ -1,0 +1,83 @@
+# Prometheus alert rules for the Titanic serving API.
+#
+# Loaded by `prometheus.yml` (`rule_files`) and evaluated on the
+# global `evaluation_interval` (15 s). Scoped to the API's two
+# operational concerns: latency (the user-visible SLO) and drift
+# (the signal that the trained model no longer matches live data).
+# Target-up is included as a hygiene rule — silent scrape failure
+# hides both of the above.
+#
+# Threshold rationale:
+#   - p95 latency budget of 250 ms is set against the observed
+#     training-time distribution (<50 ms for this model on a single
+#     core). 250 ms gives headroom for a busy host without masking
+#     real regressions like a cold preprocessor cache.
+#   - PSI 0.25 is the conventional "significant drift" threshold
+#     (monitoring.py comments call it out). 0.1 is too jumpy for the
+#     buffered PSI estimator to alert on cleanly.
+#   - for-durations are long enough to swallow single-scrape noise
+#     without letting real problems sit unreported.
+#
+# Severity labels are placeholders for an Alertmanager routing tree;
+# Alertmanager is not yet deployed in this repo (see roadmap).
+
+groups:
+  - name: titanic_api
+    interval: 30s
+    rules:
+      - alert: TitanicAPIDown
+        # `up` is emitted by Prometheus itself for every scrape; 0 means
+        # the last scrape failed. `for: 2m` = eight consecutive missed
+        # 15 s scrapes before paging.
+        expr: up{job="titanic_api"} == 0
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "titanic-api Prometheus target is down"
+          description: |
+            Prometheus has been unable to scrape `/metrics` on the API
+            for 2 minutes. Either the api container is unhealthy or the
+            compose network is broken. `/predict` traffic is likely
+            failing too; check `docker compose ps api` and the container
+            logs.
+
+      - alert: TitanicAPIHighLatency
+        # Standard Histogram -> p95 recipe: sum the `_bucket` series
+        # across the `le` dimension, rate() to turn the cumulative
+        # counters into a moving histogram, then histogram_quantile.
+        expr: >
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(titanic_prediction_latency_seconds_bucket[5m]))
+          ) > 0.25
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p95 /predict latency above 250 ms"
+          description: |
+            p95 latency of the Titanic /predict endpoint has been above
+            250 ms for 10 minutes. The training-time distribution for
+            this model is well under 50 ms, so sustained p95 at this
+            level usually means CPU contention on the API container or
+            a cold-start preprocessor cache. Inspect the dashboard's
+            latency histogram and the api container's CPU quota.
+
+      - alert: TitanicFeatureDriftHigh
+        # Per-feature PSI gauge. `max by (feature)` collapses
+        # redundant series (shouldn't be any, but defensive) so each
+        # firing alert has a single `feature` label for the annotation.
+        expr: max by (feature) (titanic_feature_drift_psi) > 0.25
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "PSI > 0.25 on feature {{ $labels.feature }}"
+          description: |
+            Population Stability Index for `{{ $labels.feature }}` has
+            been above the "significant drift" threshold (0.25) for 30
+            minutes. The serving distribution no longer looks like the
+            training snapshot in `models/reference_stats.json`; inspect
+            recent inputs and consider promoting a retrained candidate
+            via `python src/train_model.py --model <name> --promote`.

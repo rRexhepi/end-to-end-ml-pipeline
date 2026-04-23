@@ -2,6 +2,11 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+# Alert rules live next to this file and are mounted into the prometheus
+# container by docker-compose; see observability/prometheus/alerts.yml.
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   # The FastAPI /metrics endpoint is a long-lived target — unlike the
   # batch ETL loader, which needs a Pushgateway — so we scrape it
