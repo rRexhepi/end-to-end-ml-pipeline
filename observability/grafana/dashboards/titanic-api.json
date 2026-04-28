@@ -1,6 +1,6 @@
 {
   "uid": "titanic-api",
-  "title": "Titanic API — Serving Health & Drift",
+  "title": "Titanic API: Serving Health and Drift",
   "tags": ["titanic", "ml", "serving"],
   "timezone": "browser",
   "schemaVersion": 39,
@@ -139,7 +139,7 @@
     {
       "id": 7,
       "type": "timeseries",
-      "title": "Feature drift (PSI) — alert threshold 0.25",
+      "title": "Feature drift (PSI), alert threshold 0.25",
       "gridPos": {"x": 0, "y": 13, "w": 24, "h": 9},
       "datasource": {"type": "prometheus", "uid": "prometheus"},
       "targets": [

@@ -47,7 +47,7 @@ docker-down:
 
 dashboards:
 	@echo "API        : http://localhost:8000  (FastAPI docs at /docs, Prom metrics at /metrics)"
-	@echo "Grafana    : http://localhost:3000  (anonymous viewer enabled — dashboard 'Titanic API — Serving Health & Drift')"
+	@echo "Grafana    : http://localhost:3000  (anonymous viewer enabled, dashboard 'Titanic API: Serving Health and Drift')"
 	@echo "Prometheus : http://localhost:9090"
 
 clean:

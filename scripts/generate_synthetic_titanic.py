@@ -3,14 +3,14 @@
 Writes ``data/train.csv`` and ``data/test.csv`` with the same columns and
 rough distributions as Kaggle's classic Titanic competition, so the
 training + serving pipeline can be exercised end-to-end without Kaggle
-credentials. This is **not** a replacement for the real dataset — the
-model trained on it is a toy — but it's enough to exercise the
+credentials. This is **not** a replacement for the real dataset, the
+model trained on it is a toy, but it's enough to exercise the
 Preprocessor, MLflow registry, drift monitor, and FastAPI/metrics path.
 
 Why the sampling logic: we encode the same correlations the real dataset
 has (women + first class survive at higher rates) so the trained model
 makes qualitatively sensible predictions. Reviewers who dig in will see
-the correlations are hand-wired; that's fine — the dataset is explicitly
+the correlations are hand-wired. That's fine, the dataset is explicitly
 synthetic.
 
 Usage:
@@ -98,7 +98,7 @@ def main() -> None:
     print(f"Wrote synthetic training data: {train_path} ({len(train)} rows)")
     print(f"Wrote synthetic test data:     {test_path} ({len(test)} rows)")
     print(
-        "\nThese are synthetic samples — the model trained on them is a toy. "
+        "\nThese are synthetic samples. The model trained on them is a toy. "
         "Replace with Kaggle Titanic CSVs for a real experiment."
     )
 

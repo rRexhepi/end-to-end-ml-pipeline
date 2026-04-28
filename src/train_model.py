@@ -4,11 +4,11 @@ Produces three things on every run:
 
 1. A single ``pyfunc`` artifact (Preprocessor + estimator in one unit) logged
    to the current MLflow run and registered under the model name. A new
-   version gets the ``candidate`` alias; ``--promote`` also moves the
+   version gets the ``candidate`` alias. ``--promote`` also moves the
    ``production`` alias.
 2. ``models/preprocessor.pkl`` and ``models/<model>_model.pkl`` on disk for
    the Dockerfile and the filesystem-fallback serving path.
-3. ``models/reference_stats.json`` — the training-set distribution
+3. ``models/reference_stats.json``, the training-set distribution
    snapshot the drift monitor compares live traffic against.
 """
 
@@ -33,7 +33,7 @@ from monitoring import ReferenceStats
 from preprocessing import Preprocessor
 
 # Cap joblib fan-out by default. ``n_jobs=-1`` spawns one worker per core,
-# and each worker inherits the parent's resident dataset + imports; on a
+# and each worker inherits the parent's resident dataset + imports. On a
 # modern laptop with a dozen cores that can churn enough memory to tip an
 # already-stressed kernel into OOM territory. Override via TITANIC_N_JOBS.
 N_JOBS = int(os.getenv("TITANIC_N_JOBS", "2"))

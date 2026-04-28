@@ -9,7 +9,7 @@ name: Capture Grafana dashboard screenshot
 # already the reproducibility contract for the repo, so screenshots taken
 # in CI are guaranteed to match what a reviewer would see locally. Local
 # capture also requires a working Docker host and tipped over hard on the
-# author's machine — disposable runners sidestep that entirely.
+# author's machine. Disposable runners sidestep that entirely.
 
 on:
   workflow_dispatch:
@@ -47,7 +47,7 @@ jobs:
           python src/run_pipeline.py
           # run_pipeline.py writes preprocessor.pkl + random_forest_model.pkl but
           # not reference_stats.json (that path lives in train_model.py, which
-          # also wants an MLflow registry backend — overkill for the screenshot
+          # also wants an MLflow registry backend, overkill for the screenshot
           # workflow). Generate the drift-monitor reference snapshot inline
           # so the dashboard's PSI panels render.
           python - <<'PY'
@@ -143,7 +143,7 @@ jobs:
 
             Refreshed `docs/grafana-dashboard.png` from a clean observability-stack run on `ubuntu-latest`:
             synthetic Titanic data → trained baseline → docker-compose up → 90 s of `/predict` traffic →
-            Playwright snapshot of the `Titanic API — Serving Health & Drift` dashboard.
+            Playwright snapshot of the `Titanic API: Serving Health and Drift` dashboard.
 
             ### Follow-up
             Once merged, replace the placeholder paragraph in `README.md`'s Observability section with:

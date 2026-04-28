@@ -3,7 +3,7 @@
 The story this module tells:
 
 1. **At training time** we snapshot a reference distribution for every
-   numeric feature we care about — decile bin edges and per-bin counts.
+   numeric feature we care about: decile bin edges and per-bin counts.
    Saved as JSON next to the model artifacts.
 2. **At serving time** we keep a bounded ring buffer of recent inputs.
    On every Prometheus scrape we re-bin the buffer against the reference
@@ -20,8 +20,8 @@ Grafana dashboard, a single scalar per feature is what you actually plot,
 and PSI is the standard for that. One dep less, and the code shows I
 understand what "drift" means rather than just wiring a black box.
 
-On a static Kaggle dataset the drift numbers will be ~0 by construction —
-the point is the *wiring*. Pointed at a live stream, the same code earns
+On a static Kaggle dataset the drift numbers will be ~0 by construction.
+The point is the wiring. Pointed at a live stream, the same code earns
 its keep.
 """
 
@@ -90,7 +90,7 @@ class ReferenceStats:
                 if edge > deduped[-1]:
                     deduped.append(edge)
             if len(deduped) < 3:
-                # Feature too narrow to bin meaningfully; skip it.
+                # Feature too narrow to bin meaningfully, skip it.
                 continue
             edges[feature] = deduped
             hist, _ = np.histogram(col, bins=deduped)
@@ -137,7 +137,7 @@ def compute_psi(
     if actual.sum() == 0:
         return float("nan")
     actual_pct = actual.astype(float) / actual.sum()
-    # Clamp zeros so log is finite; acts like Laplace smoothing at the bin level.
+    # Clamp zeros so log is finite, acts like Laplace smoothing at the bin level.
     expected_pct = np.clip(expected_pct, _PSI_EPSILON, None)
     actual_pct = np.clip(actual_pct, _PSI_EPSILON, None)
     return float(np.sum((actual_pct - expected_pct) * np.log(actual_pct / expected_pct)))

@@ -2,7 +2,7 @@
 
 Used by the `Capture Grafana dashboard screenshot` workflow.
 Anonymous viewer auth on the Grafana side keeps this scriptless of
-credentials — Playwright just navigates to the kiosk-mode URL.
+credentials, Playwright just navigates to the kiosk-mode URL.
 """
 
 from __future__ import annotations

@@ -2,11 +2,11 @@
 
 `Preprocessor` is a small stateful transformer in the sklearn style:
 `fit` learns imputation values, encoders, and scalers from the TRAINING
-set; `transform` applies them to any frame (train, val, test, or a single
+set, and `transform` applies them to any frame (train, val, test, or a single
 inference row).
 
 Why this matters: the previous version used `df['Age'].fillna(df['Age'].median())`
-at inference time. On a single-row request that's the row's own age — or NaN
+at inference time. On a single-row request that's the row's own age, or NaN
 if the value is missing. We now save the training median and reuse it.
 """
 
@@ -79,13 +79,13 @@ class Preprocessor:
         out["Fare"] = out["Fare"].fillna(self.fare_median)
         out["Embarked"] = out["Embarked"].fillna(self.embarked_mode)
 
-        # Unseen Embarked categories would crash LabelEncoder; fall back to the mode.
+        # Unseen Embarked categories would crash LabelEncoder, fall back to the mode.
         known = set(self.embarked_encoder.classes_)
         out["Embarked"] = out["Embarked"].where(out["Embarked"].isin(known), self.embarked_mode)
         out["Embarked"] = self.embarked_encoder.transform(out["Embarked"])
 
         out["Sex"] = out["Sex"].map({"male": 0, "female": 1})
-        # Map returns NaN for unknown values; surface that clearly.
+        # Map returns NaN for unknown values, surface that clearly.
         if out["Sex"].isna().any():
             raise ValueError("Sex must be 'male' or 'female'.")
 

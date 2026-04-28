@@ -3,7 +3,7 @@
 Two loading paths, picked in order:
 
 1. **Model Registry URI** (``MODEL_URI``, e.g. ``models:/titanic-survival@production``).
-   This is the production path — one atomic pyfunc artifact, versioned, promotable
+   This is the production path: one atomic pyfunc artifact, versioned, promotable
    via ``mlflow.MlflowClient.set_registered_model_alias``.
 2. **Filesystem pickles** (``MODEL_PATH`` + ``PREPROCESSOR_PATH``). Used by CI,
    the Dockerfile's baked-in artifacts, and local dev before a Registry exists.

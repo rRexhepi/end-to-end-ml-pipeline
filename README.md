@@ -1,13 +1,10 @@
 # end-to-end-ml-pipeline
 
 A small, honest end-to-end ML service: train a Titanic survival classifier,
-log the run with **MLflow**, ship a **FastAPI** inference service in **Docker**.
+log the run with MLflow, ship a FastAPI inference service in Docker.
 Preprocessing lives in a single stateful `Preprocessor` that is fit on the
-training set and saved alongside the model — so inference on a single row
-uses *training* statistics, not the row's own values.
-
-> **Status:** portfolio project. Training + serving work end-to-end; CI runs
-> lint + pytest and builds the Docker image on every push.
+training set and saved alongside the model, so inference on a single row
+uses training statistics, not the row's own values.
 
 ## Architecture
 
@@ -95,9 +92,9 @@ curl http://localhost:8000/health
 ## MLflow Model Registry
 
 `train_model.py` wraps training in `mlflow.start_run()`, logs a single
-**pyfunc** artifact (Preprocessor + estimator wrapped as
+pyfunc artifact (Preprocessor + estimator wrapped as
 `TitanicSurvivalModel`), and registers it under the name
-`titanic-survival`. Every new version gets the `@candidate` alias; passing
+`titanic-survival`. Every new version gets the `@candidate` alias. Passing
 `--promote` also moves the `@production` alias.
 
 ```bash
@@ -151,7 +148,7 @@ make dashboards   # prints URLs
 ```
 
 Prometheus scrapes the API's `/metrics` directly on a 15s interval
-(no Pushgateway needed — the API is long-lived; contrast with the
+(no Pushgateway needed, the API is long-lived. Contrast with the
 batch ETL pipeline where Pushgateway is the right tool). Grafana
 auto-loads a provisioned dashboard
 ([`observability/grafana/dashboards/titanic-api.json`](observability/grafana/dashboards/titanic-api.json))
@@ -159,7 +156,7 @@ with:
 
 * **Requests/minute** and **positive rate** at a glance.
 * **p50 / p95 / p99 latency** computed from `histogram_quantile` over
-  the prediction-latency histogram — the three numbers you actually
+  the prediction-latency histogram, the three numbers you actually
   put in a serving SLO.
 * **Max feature drift PSI** with green / yellow / red thresholds at
   0.0 / 0.1 / 0.25, plus a per-feature time series for drill-down.
@@ -174,11 +171,11 @@ with:
 `TitanicFeatureDriftHigh` fires when any monitored feature's PSI
 sits above the 0.25 significant-drift threshold for 30 minutes,
 and `TitanicAPIDown` catches a missing scrape target before silence
-masks the other two. Alertmanager isn't shipped yet — the rules
+masks the other two. Alertmanager isn't shipped yet, the rules
 expose their state on Prometheus' `/alerts` page and via Grafana's
 unified-alerting view.
 
-![Titanic API — Serving Health & Drift dashboard](docs/grafana-dashboard.png)
+![Titanic API: Serving Health and Drift dashboard](docs/grafana-dashboard.png)
 
 The image above is captured in CI, not hand-cropped on a laptop: the
 [`Capture Grafana dashboard screenshot`](.github/workflows/screenshot-grafana-dashboard.yml)
@@ -210,7 +207,7 @@ CI also builds the Docker image.
 ## Design notes
 
 **Why a stateful `Preprocessor`?** The original version ran
-`df['Age'].fillna(df['Age'].median())` *inside* the inference path — on a
+`df['Age'].fillna(df['Age'].median())` inside the inference path, so on a
 single-row request that's the row's own value (or NaN). Now `fit()` captures
 `age_median`, `fare_median`, `embarked_mode`, a fitted `LabelEncoder`, and a
 `StandardScaler` on the training set, and `transform()` applies them. The
@@ -221,7 +218,7 @@ whole thing is one joblib artifact so serving can't drift from training.
 the versioning wrong. When they drift, predictions get silently wrong,
 not loudly broken. Wrapping both inside a single
 `mlflow.pyfunc.PythonModel` and registering it under
-`models:/titanic-survival@production` makes the serving unit atomic —
+`models:/titanic-survival@production` makes the serving unit atomic:
 one URI, one version, one rollback button. The filesystem path still
 exists as a fallback so CI and the Dockerfile-baked image keep working.
 
@@ -235,15 +232,15 @@ resolve against.
 **Why PSI rather than Evidently / WhyLogs?** Evidently is the right
 choice when you want an HTML report with a dozen stats tests. For a
 live `/metrics` endpoint powering a Grafana graph, the thing you
-actually plot is a single scalar per feature — and PSI is the standard
+actually plot is a single scalar per feature, and PSI is the standard
 for that. Rolling our own ~20 lines of `compute_psi` keeps the
 dependency surface small and documents what "drift" means. On the
-static Kaggle dataset, the numbers are ~0 by construction — the value
+static Kaggle dataset, the numbers are ~0 by construction. The value
 is the wiring: point this at a live stream and it earns its keep.
 
 **Why FastAPI over Flask?** Pydantic gives us typed input validation
 with automatic 422s, and `/docs` is free. Start-up loads artifacts
-once in a `lifespan` hook; nothing is re-read per request.
+once in a `lifespan` hook. Nothing is re-read per request.
 
 ## Roadmap
 
@@ -253,11 +250,11 @@ once in a `lifespan` hook; nothing is re-read per request.
 - [x] GitHub Actions workflow: compose up → drive synthetic traffic → Playwright screenshot of the dashboard → commit `docs/grafana-dashboard.png`.
 - [x] Alert rules (`observability/prometheus/alerts.yml`) for latency SLO + drift threshold.
 - [ ] Shadow scoring: serve `@production` in the hot path, send a copy to `@candidate`, log disagreement rate.
-- [ ] Kubernetes manifests — *only* if actually deployed to a cluster; otherwise it's ceremony.
+- [ ] Kubernetes manifests, only if actually deployed to a cluster, otherwise it's ceremony.
 - [ ] DVC for data + model versioning.
 - [ ] Hydra-based config instead of env vars + defaults.
-- [ ] A PySpark ingestion stage (only if we actually scale past CSV — otherwise don't).
+- [ ] A PySpark ingestion stage (only if we actually scale past CSV, otherwise don't).
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE).

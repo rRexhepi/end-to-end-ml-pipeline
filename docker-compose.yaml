@@ -20,7 +20,7 @@ services:
 
   # ------------------------------------------------------------------
   # Observability: the API is long-lived, so Prometheus scrapes it
-  # directly — no Pushgateway needed (contrast with the batch ETL,
+  # directly, no Pushgateway needed (contrast with the batch ETL,
   # where Pushgateway is required). Grafana loads a provisioned
   # dashboard at startup.
   # ------------------------------------------------------------------

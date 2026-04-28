@@ -4,7 +4,7 @@
 # global `evaluation_interval` (15 s). Scoped to the API's two
 # operational concerns: latency (the user-visible SLO) and drift
 # (the signal that the trained model no longer matches live data).
-# Target-up is included as a hygiene rule — silent scrape failure
+# Target-up is included as a hygiene rule, silent scrape failure
 # hides both of the above.
 #
 # Threshold rationale:
@@ -18,7 +18,7 @@
 #   - for-durations are long enough to swallow single-scrape noise
 #     without letting real problems sit unreported.
 #
-# Severity labels are placeholders for an Alertmanager routing tree;
+# Severity labels are placeholders for an Alertmanager routing tree.
 # Alertmanager is not yet deployed in this repo (see roadmap).
 
 groups:
@@ -26,7 +26,7 @@ groups:
     interval: 30s
     rules:
       - alert: TitanicAPIDown
-        # `up` is emitted by Prometheus itself for every scrape; 0 means
+        # `up` is emitted by Prometheus itself for every scrape. 0 means
         # the last scrape failed. `for: 2m` = eight consecutive missed
         # 15 s scrapes before paging.
         expr: up{job="titanic_api"} == 0
@@ -39,7 +39,7 @@ groups:
             Prometheus has been unable to scrape `/metrics` on the API
             for 2 minutes. Either the api container is unhealthy or the
             compose network is broken. `/predict` traffic is likely
-            failing too; check `docker compose ps api` and the container
+            failing too. Check `docker compose ps api` and the container
             logs.
 
       - alert: TitanicAPIHighLatency
@@ -78,6 +78,6 @@ groups:
             Population Stability Index for `{{ $labels.feature }}` has
             been above the "significant drift" threshold (0.25) for 30
             minutes. The serving distribution no longer looks like the
-            training snapshot in `models/reference_stats.json`; inspect
+            training snapshot in `models/reference_stats.json`. Inspect
             recent inputs and consider promoting a retrained candidate
             via `python src/train_model.py --model <name> --promote`.

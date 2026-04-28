@@ -22,7 +22,7 @@ def test_transform_single_row_uses_training_median(train_frame):
     out = pp.transform(one_row)
     assert list(out.columns) == FEATURES
     assert len(out) == 1
-    # Imputation happened — scaled Age is not NaN.
+    # Imputation happened, scaled Age is not NaN.
     assert out["Age"].notna().all()
     assert out["Fare"].notna().all()
 
