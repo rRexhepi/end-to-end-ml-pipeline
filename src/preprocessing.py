@@ -75,8 +75,11 @@ class Preprocessor:
         self._require_columns(df)
         out = df.copy()
 
-        out["Age"] = out["Age"].fillna(self.age_median)
-        out["Fare"] = out["Fare"].fillna(self.fare_median)
+        # to_numeric coerces single-row inputs (which may arrive as object
+        # dtype from JSON) to float so fillna doesn't trigger the pandas
+        # 2.x silent-downcasting FutureWarning.
+        out["Age"] = pd.to_numeric(out["Age"], errors="coerce").fillna(self.age_median)
+        out["Fare"] = pd.to_numeric(out["Fare"], errors="coerce").fillna(self.fare_median)
         out["Embarked"] = out["Embarked"].fillna(self.embarked_mode)
 
         # Unseen Embarked categories would crash LabelEncoder, fall back to the mode.
